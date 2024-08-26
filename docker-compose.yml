@@ -1,0 +1,138 @@
+#--REUSEABLE LOGGING SECTION--
+# Docker compose support for YAML extension fields: top-level keys starting with x- are ignored by Docker Compose and the Docker engine
+x-def-logging: &def-logging
+  logging:
+    driver: "json-file"
+    options:
+      max-file: "5"
+      max-size: "10m"
+#-----------------------------
+
+services:
+  reverse-proxy:
+    # The official v2 Traefik docker image
+    image: traefik:v3.1.2
+    <<: *def-logging
+    restart: always
+    command:
+
+      # Enable the API in insecure mode, which means that the API will be available directly on the EntryPoint named "traefik".
+      # Note: If the EntryPoint named traefik is not configured, it will be automatically created on port 8080.
+      # Default is false, so the insecure API is disabled by default.
+      # This mode is less secure because it can be used without a router configuration which could implement additional security.
+      #- "--api.insecure=true"
+
+      # Enable the Traefik Dashboard web interface
+      - "--api.dashboard=true"
+      # Enable docker discovery
+      - "--providers.docker"
+      # Look for services in this network
+      # (Docker containers with discoverable HTTP services in need to attached to this network)
+      - "--providers.docker.network=traefik-reverse-proxy-net"
+      # Services need to explictely be enabled for docker discovery in their labels section
+      - "--providers.docker.exposedbydefault=false"
+
+      # Traefik listens on ports 80, 443 and 444
+      - "--entryPoints.web.address=:80"
+      - "--entryPoints.websecure.address=:443"
+      # (Port 4444 will be used for the Traefik dashboard)
+      - "--entryPoints.dashboard.address=:4444"
+
+      # Automatically redirect ALL HTTP requests on port 80 to HTTPS on port 443
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+        #-----------------------------------------------
+        # Automatically redirect ALL HTTP requests on port 4444 to HTTPS on same port (4444)
+        # (entrypoint named dashboard has port 4444 declared above)
+      - "--entrypoints.dashboard.http.redirections.entrypoint.to=dashboard"
+      - "--entrypoints.dashboard.http.redirections.entrypoint.scheme=https"
+        #-----------------------------------------------
+
+      # Attach TLS resolver for websecure entrypoint (port 443 HTTPS)
+      - "--entryPoints.websecure.http.tls.certResolver=pathologytlsresolver"
+      # Attaching a resolver to the dashboard entrypoint is not possible here in the static config,
+      # because HTTP will be redirected to HTTPS on the same port, which seems to need a dynamic config
+      # So the resolver has to be attached to the router in the label section and NOT here as shown below
+      #- "--entryPoints.dashboard.http.tls.certResolver=pathologytlsresolver"
+
+      # Automatic Certificate Management Environment (ACME) used for HTTPS (has to get attached to a router or whole entrypoint)
+      - "--certificatesResolvers.pathologytlsresolver.acme.email=your@email.com"
+      - "--certificatesresolvers.pathologytlsresolver.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.pathologytlsresolver.acme.tlschallenge=true"
+      # Staging server. Uncomment line below when testing configuration, so it does not
+      # accidentally use up the Let's Encrypt quotas. For production leave the line commented.
+      - "--certificatesresolvers.pathologytlsresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+      # Define log level. Can be TRACE, DEBUG, INFO, WARN, ERROR, FATAL, and PANIC
+      - "--log.level=DEBUG"
+    networks:
+      # Externally created network, because it can be used here and also in other docker-compose file(s)
+      # This network is used for communication between Traefik and other Docker HTTP services
+      # For security reasons should it should be configured as internal network since not connection
+      # to the host is needed
+      - traefik-reverse-proxy-net
+      # This is a simple bridged network, which is used for Traefik's entrypoints
+      - traefik-entrypoint-net
+    ports:
+      # Default HTTP port
+      - "80:80"
+      # Default HTTPS port
+      - "443:443"
+      # HTTP and HTTPS port for Treafuk dashboard (this port should not be opened for outside in firewall for server)
+      - "4444:4444"
+    volumes:
+      # Mount docker socket for Traefik to interact with Docker
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Mount letsencrypt folder where HTTPS certificates are stored
+      - "./letsencrypt:/letsencrypt"
+
+    labels:
+      # Enable this service for traefik exposure
+      - "traefik.enable=true"
+      # Define router so incoming requess with the Host header "dash.localhost" are routed to this service
+      - "traefik.http.routers.dashboard_https.rule=Host(`dash.localhost`)"
+      # Attach router to entrypoint
+      # If this is not done, the router will be attached (reachable) by all entrypoints
+      - "traefik.http.routers.dashboard_https.entrypoints=dashboard"
+      # Attach TLS resolver to router
+      # This has to be done here and cannot be done in the static config because HTTPS is redirected to HTTP on the same port
+      - "traefik.http.routers.dashboard_https.tls.certresolver=pathologytlsresolver"
+      # Target service
+      # Each request must eventually be handled by a service
+      # If a label defines a router (e.g. through a router Rule) and a label defines a service (e.g. implicitly through a loadbalancer server port value),
+      # but the router does not specify any service, then that service is automatically assigned to the router.
+      # Otherwise named service has to be provided, as done here below:
+      - "traefik.http.routers.dashboard_https.service=api@internal"
+
+  web:
+    # Apache webserver docker image
+    image: httpd:2.4
+    <<: *def-logging
+    restart: always
+    networks:
+      - traefik-reverse-proxy-net
+    labels:
+      # Enable this service for traefik exposure
+      - "traefik.enable=true"
+      # Define router so incoming requess with the Host header "web.localhost" are routed to this service
+      - "traefik.http.routers.webserver.rule=Host(`web.localhost`)"
+      # Attach router to entrypoint
+      # If this is not done, the router will be attached (reachable) by all entrypoints
+      # In this case there would be no consequences if attached to all entrypoints, since for it to work on entrypoint 'dashboard' (port 4444)
+      # there would be additional config needed to make it work (see above in traefik service labels section)
+      - "traefik.http.routers.webserver.entrypoints=websecure"
+      # Target service for Docker
+      # Traefik has automatic port detection for Docker services if **ONLY ONE PORT IS EXPOSED VIA DOCKER BUILD**. In all other cases,
+      # the port has to be specified as done here below:
+      - "traefik.http.services.webserverservice.loadbalancer.server.port=80"
+
+networks:
+  # Network for Traefik's entrypoints
+  # Bridged to host network
+  traefik-entrypoint-net:
+    driver: bridge
+  # External network not handled by compose
+  # Created on host via `docker network create --internal traefik-reverse-proxy-net`
+  # This network is only internal, no routing to other networks is necessary
+  traefik-reverse-proxy-net:
+    external: true
+    name: traefik-reverse-proxy-net
