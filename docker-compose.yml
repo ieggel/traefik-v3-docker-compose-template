@@ -49,19 +49,19 @@ services:
         #-----------------------------------------------
 
       # Attach TLS resolver for websecure entrypoint (port 443 HTTPS)
-      - "--entryPoints.websecure.http.tls.certResolver=pathologytlsresolver"
+      - "--entryPoints.websecure.http.tls.certResolver=myresolvername"
       # Attaching a resolver to the dashboard entrypoint is not possible here in the static config,
       # because HTTP will be redirected to HTTPS on the same port, which seems to need a dynamic config
       # So the resolver has to be attached to the router in the label section and NOT here as shown below
-      #- "--entryPoints.dashboard.http.tls.certResolver=pathologytlsresolver"
+      #- "--entryPoints.dashboard.http.tls.certResolver=myresolvername"
 
       # Automatic Certificate Management Environment (ACME) used for HTTPS (has to get attached to a router or whole entrypoint)
-      - "--certificatesResolvers.pathologytlsresolver.acme.email=your@email.com"
-      - "--certificatesresolvers.pathologytlsresolver.acme.storage=/letsencrypt/acme.json"
-      - "--certificatesresolvers.pathologytlsresolver.acme.tlschallenge=true"
+      - "--certificatesResolvers.myresolvername.acme.email=your@email.com"
+      - "--certificatesresolvers.myresolvername.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.myresolvername.acme.tlschallenge=true"
       # Staging server. Uncomment line below when testing configuration, so it does not
       # accidentally use up the Let's Encrypt quotas. For production leave the line commented.
-      - "--certificatesresolvers.pathologytlsresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+      - "--certificatesresolvers.myresolvername.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
       # Define log level. Can be TRACE, DEBUG, INFO, WARN, ERROR, FATAL, and PANIC
       - "--log.level=DEBUG"
     networks:
@@ -95,7 +95,7 @@ services:
       - "traefik.http.routers.dashboard_https.entrypoints=dashboard"
       # Attach TLS resolver to router
       # This has to be done here and cannot be done in the static config because HTTPS is redirected to HTTP on the same port
-      - "traefik.http.routers.dashboard_https.tls.certresolver=pathologytlsresolver"
+      - "traefik.http.routers.dashboard_https.tls.certresolver=myresolvername"
       # Target service
       # Each request must eventually be handled by a service
       # If a label defines a router (e.g. through a router Rule) and a label defines a service (e.g. implicitly through a loadbalancer server port value),
