@@ -42,18 +42,11 @@ services:
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
         #-----------------------------------------------
-        # Automatically redirect ALL HTTP requests on port 4444 to HTTPS on same port (4444)
+      # Automatically redirect ALL HTTP requests on port 4444 to HTTPS on same port (4444)
         # (entrypoint named dashboard has port 4444 declared above)
       - "--entrypoints.dashboard.http.redirections.entrypoint.to=dashboard"
       - "--entrypoints.dashboard.http.redirections.entrypoint.scheme=https"
         #-----------------------------------------------
-
-      # Attach TLS resolver for websecure entrypoint (port 443 HTTPS)
-      - "--entryPoints.websecure.http.tls.certResolver=myresolvername"
-      # Attaching a resolver to the dashboard entrypoint is not possible here in the static config,
-      # because HTTP will be redirected to HTTPS on the same port, which seems to need a dynamic config
-      # So the resolver has to be attached to the router in the label section and NOT here as shown below
-      #- "--entryPoints.dashboard.http.tls.certResolver=myresolvername"
 
       # Automatic Certificate Management Environment (ACME) used for HTTPS (has to get attached to a router or whole entrypoint)
       - "--certificatesResolvers.myresolvername.acme.email=your@email.com"
@@ -62,6 +55,14 @@ services:
       # Staging server. Uncomment line below when testing configuration, so it does not
       # accidentally use up the Let's Encrypt quotas. For production leave the line commented.
       - "--certificatesresolvers.myresolvername.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+
+      # Attach TLS resolver for websecure entrypoint (port 443 HTTPS)
+      - "--entryPoints.websecure.http.tls.certResolver=myresolvername"
+      # Attaching a resolver to the dashboard entrypoint is not possible here in the static config,
+      # because HTTP will be redirected to HTTPS on the same port, which seems to need a dynamic config
+      # So the resolver has to be attached to the router in the label section and NOT here as shown below
+      #- "--entryPoints.dashboard.http.tls.certResolver=myresolvername"
+
       # Define log level. Can be TRACE, DEBUG, INFO, WARN, ERROR, FATAL, and PANIC
       - "--log.level=DEBUG"
     networks:
@@ -77,7 +78,7 @@ services:
       - "80:80"
       # Default HTTPS port
       - "443:443"
-      # HTTP and HTTPS port for Treafuk dashboard (this port should not be opened for outside in firewall for server)
+      # HTTP and HTTPS port for Traefik dashboard (this port should not be opened for outside in firewall for server)
       - "4444:4444"
     volumes:
       # Mount docker socket for Traefik to interact with Docker
